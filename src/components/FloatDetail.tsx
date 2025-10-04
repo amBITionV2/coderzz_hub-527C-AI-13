@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Activity, Droplets, Wind, TrendingUp, Calendar } from "lucide-react";
+import { ArrowLeft, Activity, Droplets, Wind, TrendingUp, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -147,9 +147,9 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
 
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Monsoon Tracker</h1>
+            <h1 className="text-3xl font-bold mb-2">Float {floatData.wmo_id}</h1>
             <p className="text-slate-400">
-              WMO ID: {floatData.wmo_id} • {floatData.institution || 'Unknown Institution'}
+              {floatData.institution || 'Unknown Institution'} • {floatData.platform_type || 'APEX'}
             </p>
           </div>
         </div>
@@ -193,10 +193,30 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
         <Card className="bg-slate-800 border-slate-700 p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold">Historical Profile Explorer</h3>
-            <div className="text-sm text-slate-400">
-              {floatData.profiles.length > 0 && (
-                <>Profile: <span className="text-cyan-400">{selectedProfile + 1}</span> of {floatData.profiles.length}</>
-              )}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedProfile(Math.max(0, selectedProfile - 1))}
+                disabled={selectedProfile === 0}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="text-sm text-slate-400">
+                {floatData.profiles.length > 0 && (
+                  <>Profile: <span className="text-cyan-400">{selectedProfile + 1}</span> of {floatData.profiles.length}</>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedProfile(Math.min(floatData.profiles.length - 1, selectedProfile + 1))}
+                disabled={selectedProfile === floatData.profiles.length - 1}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           </div>
 
