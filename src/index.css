@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 210 50% 8%;
+    --foreground: 180 100% 90%;
+
+    --card: 210 45% 12%;
+    --card-foreground: 180 100% 90%;
+
+    --popover: 210 45% 10%;
+    --popover-foreground: 180 100% 90%;
+
+    --primary: 185 100% 50%;
+    --primary-foreground: 210 50% 8%;
+
+    --secondary: 210 40% 18%;
+    --secondary-foreground: 180 100% 90%;
+
+    --muted: 210 40% 15%;
+    --muted-foreground: 180 30% 60%;
+
+    --accent: 185 100% 50%;
+    --accent-foreground: 210 50% 8%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 180 100% 90%;
+
+    --warning: 45 100% 50%;
+    --warning-foreground: 210 50% 8%;
+
+    --success: 142 70% 45%;
+    --success-foreground: 180 100% 90%;
+
+    --border: 210 30% 20%;
+    --input: 210 30% 18%;
+    --ring: 185 100% 50%;
+
+    --radius: 0.5rem;
+
+    --glow-cyan: 185 100% 50%;
+    --ocean-deep: 210 50% 8%;
+    --ocean-darker: 210 45% 6%;
+    --ocean-card: 210 45% 12%;
+
+    --sidebar-background: 210 50% 8%;
+    --sidebar-foreground: 180 100% 90%;
+    --sidebar-primary: 185 100% 50%;
+    --sidebar-primary-foreground: 210 50% 8%;
+    --sidebar-accent: 210 40% 15%;
+    --sidebar-accent-foreground: 180 100% 90%;
+    --sidebar-border: 210 30% 20%;
+    --sidebar-ring: 185 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Leaflet map styles */
+  .leaflet-container {
+    height: 100%;
+    width: 100%;
+    z-index: 1;
+  }
+  
+  .leaflet-popup-content-wrapper {
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+    border: 1px solid hsl(var(--border));
+  }
+  
+  .leaflet-popup-tip {
+    background: hsl(var(--card));
+  }
+}

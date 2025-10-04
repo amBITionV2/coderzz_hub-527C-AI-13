@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database with PostGIS extension
+  db:
+    image: postgis/postgis:15-3.3
+    environment:
+      POSTGRES_DB: floatchat_db
+      POSTGRES_USER: floatchat_user
+      POSTGRES_PASSWORD: floatchat_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_postgis.sql:/docker-entrypoint-initdb.d/init_postgis.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U floatchat_user -d floatchat_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # FloatChat backend API
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://floatchat_user:floatchat_password@db:5432/floatchat_db
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=True
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
