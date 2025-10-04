@@ -12,7 +12,7 @@ const Index = () => {
 
   return (
     <div className="flex w-full h-screen overflow-hidden bg-background">
-      <Sidebar />
+      {!selectedFloatId && <Sidebar />}
       {selectedFloatId ? (
         <FloatDetail 
           floatId={selectedFloatId} 

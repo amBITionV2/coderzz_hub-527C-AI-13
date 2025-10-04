@@ -94,29 +94,26 @@ def get_dac_for_float(ftp_server, float_id):
 
 def download_latest_profile(ftp_server, float_id, dac):
     """
-    Downloads the latest profile file for a float.
+    Downloads the main profile file containing ALL profiles for a float.
     """
-    base_path = f'/ifremer/argo/dac/{dac}/{float_id}/profiles/'
+    # Try to get the main _prof.nc file which contains all profiles
+    base_path = f'/ifremer/argo/dac/{dac}/{float_id}/'
+    main_file = f'{float_id}_prof.nc'
     
     try:
         ftp = ftplib.FTP(ftp_server)
         ftp.login()
         ftp.cwd(base_path)
         
-        # List files
+        # Check if main profile file exists
         filenames = ftp.nlst()
         
-        # Filter for NetCDF profile files
-        nc_files = sorted([f for f in filenames if f.endswith('.nc') and f.startswith(('R', 'D'))])
-        
-        if not nc_files:
-            print(f"  No NetCDF profile files found")
+        if main_file not in filenames:
+            print(f"  Main profile file not found")
             ftp.quit()
             return None
         
-        # Get the latest file
-        latest_file_name = nc_files[-1]
-        print(f"  Downloading: {latest_file_name}")
+        print(f"  Downloading: {main_file} (contains all profiles)")
         
         # Download to temp file
         tmp_file = tempfile.NamedTemporaryFile(suffix='.nc', delete=False)
@@ -124,7 +121,7 @@ def download_latest_profile(ftp_server, float_id, dac):
         tmp_file.close()
         
         with open(tmp_path, 'wb') as local_file:
-            ftp.retrbinary(f'RETR {latest_file_name}', local_file.write)
+            ftp.retrbinary(f'RETR {main_file}', local_file.write)
         
         ftp.quit()
         print(f"  Downloaded successfully")
@@ -157,8 +154,8 @@ async def ingest_float_file(file_path, wmo_id):
                 await session.flush()
                 print(f"  Created float in DB: ID={float_obj.id}")
                 
-                # Process first 3 profiles
-                num_profiles = min(3, ds.sizes.get('N_PROF', 0))
+                # Process up to 30 profiles per float (for performance)
+                num_profiles = min(30, ds.sizes.get('N_PROF', 0))
                 profiles_added = 0
                 
                 for prof_idx in range(num_profiles):
@@ -203,7 +200,8 @@ async def ingest_float_file(file_path, wmo_id):
                             psal = ds['PSAL'].values[prof_idx] if 'PSAL' in ds.variables else None
                             
                             measurements_added = 0
-                            for i in range(min(15, len(pres))):
+                            # Process ALL measurements, not just first 15
+                            for i in range(len(pres)):
                                 if not pd.isna(pres[i]) and pres[i] > 0:
                                     measurement = Measurement(
                                         profile_id=profile.id,
@@ -240,12 +238,12 @@ async def ingest_float_file(file_path, wmo_id):
 
 async def main():
     """
-    Main function to fetch and ingest 3 random floats.
+    Main function to fetch and ingest 100 random floats.
     """
     ftp_server = 'ftp.ifremer.fr'
     
     print("=" * 60)
-    print("Fetching 3 Random Argo Floats from FTP")
+    print("Fetching 100 Random Argo Floats from FTP")
     print("=" * 60)
     
     # Get 100 random float IDs
@@ -258,7 +256,7 @@ async def main():
     success_count = 0
     
     for idx, float_id in enumerate(float_ids, 1):
-        print(f"\n[{idx}/3] Processing float {float_id}")
+        print(f"\n[{idx}/100] Processing float {float_id}")
         print("-" * 40)
         
         # Get DAC
@@ -285,7 +283,7 @@ async def main():
             success_count += 1
     
     print("\n" + "=" * 60)
-    print(f"SUCCESS: Ingested {success_count}/3 floats")
+    print(f"SUCCESS: Ingested {success_count}/100 floats")
     print("=" * 60)
     print("\nVerify by running:")
     print("  curl http://localhost:8000/api/v1/floats/")

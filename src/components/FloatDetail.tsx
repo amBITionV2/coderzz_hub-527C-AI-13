@@ -81,12 +81,12 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
     }))
     .sort((a, b) => a.depth - b.depth) || [];
 
-  // Prepare chart data for Dissolved Oxygen vs Depth
-  const oxygenDepthData = profile?.measurements
-    ?.filter(m => m.dissolved_oxygen !== null && m.depth !== null)
+  // Prepare chart data for Pressure vs Depth
+  const pressureDepthData = profile?.measurements
+    ?.filter(m => m.pressure !== null && m.depth !== null)
     .map(m => ({
       depth: m.depth,
-      oxygen: m.dissolved_oxygen,
+      pressure: m.pressure,
     }))
     .sort((a, b) => a.depth - b.depth) || [];
 
@@ -132,7 +132,7 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
   };
 
   return (
-    <div className="h-full bg-slate-900 text-white overflow-y-auto">
+    <div className="flex-1 w-full h-full bg-slate-900 text-white overflow-y-auto">
       {/* Header */}
       <div className="bg-gradient-to-r from-slate-800 to-slate-900 border-b border-slate-700 p-6">
         <div className="flex items-center justify-between mb-4">
@@ -308,49 +308,43 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
           </ResponsiveContainer>
         </Card>
 
-        {/* Dissolved Oxygen Profile */}
+        {/* Pressure Profile */}
         <Card className="bg-slate-800 border-slate-700 p-4">
           <div className="flex items-center gap-2 mb-4">
-            <div className="h-2 w-2 rounded-full bg-blue-400"></div>
-            <h3 className="font-semibold">Dissolved Oxygen Profile</h3>
+            <div className="h-2 w-2 rounded-full bg-purple-400"></div>
+            <h3 className="font-semibold">Pressure Profile</h3>
           </div>
-          <div className="text-sm text-slate-400 mb-4">Dissolved Oxygen (mg/L) vs Depth (m)</div>
-          {oxygenDepthData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={oxygenDepthData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis 
-                  type="number"
-                  dataKey="oxygen" 
-                  stroke="#94a3b8"
-                  label={{ value: 'Dissolved Oxygen (mg/L)', position: 'insideBottom', offset: -5, fill: '#94a3b8' }}
-                />
-                <YAxis 
-                  type="number"
-                  dataKey="depth" 
-                  stroke="#94a3b8"
-                  reversed
-                  label={{ value: 'Depth (m)', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
-                />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}
-                  labelStyle={{ color: '#94a3b8' }}
-                />
-                <Line 
-                  type="natural" 
-                  dataKey="oxygen" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  dot={false}
-                  connectNulls
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[300px] flex items-center justify-center text-slate-500">
-              No dissolved oxygen data available
-            </div>
-          )}
+          <div className="text-sm text-slate-400 mb-4">Pressure (dbar) vs Depth (m)</div>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={pressureDepthData} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis 
+                type="number"
+                dataKey="pressure" 
+                stroke="#94a3b8"
+                label={{ value: 'Pressure (dbar)', position: 'insideBottom', offset: -5, fill: '#94a3b8' }}
+              />
+              <YAxis 
+                type="number"
+                dataKey="depth" 
+                stroke="#94a3b8"
+                reversed
+                label={{ value: 'Depth (m)', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
+              />
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}
+                labelStyle={{ color: '#94a3b8' }}
+              />
+              <Line 
+                type="natural" 
+                dataKey="pressure" 
+                stroke="#a855f7" 
+                strokeWidth={2}
+                dot={false}
+                connectNulls
+              />
+            </LineChart>
+          </ResponsiveContainer>
         </Card>
 
         {/* Real-time Surface Data */}
