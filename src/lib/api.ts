@@ -93,6 +93,14 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000');
 const API_DEBUG = import.meta.env.VITE_API_DEBUG === 'true';
 
+// Log API configuration on load
+console.log('[API Config]', {
+  API_BASE_URL,
+  API_TIMEOUT,
+  API_DEBUG,
+  env: import.meta.env.VITE_API_URL
+});
+
 // Custom error class for API errors
 export class APIError extends Error {
   constructor(
@@ -254,6 +262,15 @@ export async function fetchFloats(params: {
   const endpoint = `/api/v1/floats${queryString ? `?${queryString}` : ''}`;
 
   return apiRequest(endpoint);
+}
+
+/**
+ * Fetch detailed information for a specific float
+ * @param floatId - The ID of the float
+ * @returns Promise<FloatDetail> - Detailed float information with profiles and measurements
+ */
+export async function fetchFloatDetail(floatId: number): Promise<FloatDetail> {
+  return apiRequest(`/api/v1/floats/${floatId}`);
 }
 
 /**

@@ -381,16 +381,28 @@ class GeospatialQueryService:
     
     async def _create_float_summary(self, float_obj: Float) -> FloatSummarySchema:
         """Create float summary from float object."""
+        import math
+        
         # Get latest profile for position
         latest_profile = None
         if float_obj.profiles:
             latest_profile = max(float_obj.profiles, key=lambda p: p.timestamp)
         
+        # Get latitude/longitude, handling NaN values
+        lat = latest_profile.latitude if latest_profile else float_obj.deployment_latitude
+        lon = latest_profile.longitude if latest_profile else float_obj.deployment_longitude
+        
+        # Replace NaN with None
+        if lat is not None and (math.isnan(lat) or math.isinf(lat)):
+            lat = None
+        if lon is not None and (math.isnan(lon) or math.isinf(lon)):
+            lon = None
+        
         return FloatSummarySchema(
             id=float_obj.id,
             wmo_id=float_obj.wmo_id,
-            latitude=latest_profile.latitude if latest_profile else float_obj.deployment_latitude,
-            longitude=latest_profile.longitude if latest_profile else float_obj.deployment_longitude,
+            latitude=lat,
+            longitude=lon,
             status=float_obj.status,
             last_update=float_obj.last_update,
             profile_count=len(float_obj.profiles),

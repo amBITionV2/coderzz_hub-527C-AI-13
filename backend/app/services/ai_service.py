@@ -7,9 +7,6 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import httpx
-from langchain.llms import OpenAI
-from langchain.schema import BaseMessage, HumanMessage, SystemMessage
-from langchain.prompts import PromptTemplate
 
 from app.config import settings
 from app.schemas import AIQueryInput, QueryParameters, AIQueryResponse
@@ -18,22 +15,17 @@ logger = logging.getLogger(__name__)
 
 
 class AIService:
-    """Service for AI-powered query processing."""
+    """Service for AI-powered query processing using Groq Llama."""
     
     def __init__(self):
         self.groq_api_key = settings.GROQ_API_KEY
-        self.openai_api_key = settings.OPENAI_API_KEY
+        self.groq_api_url = "https://api.groq.com/openai/v1/chat/completions"
+        self.model = "llama-3.3-70b-versatile"  # Groq's Llama model
         
-        # Initialize LLM client
-        if self.openai_api_key:
-            self.llm = OpenAI(
-                api_key=self.openai_api_key,
-                temperature=0.1,
-                max_tokens=1000
-            )
+        if not self.groq_api_key:
+            logger.warning("No Groq API key configured - AI features will be limited")
         else:
-            logger.warning("No AI API key configured")
-            self.llm = None
+            logger.info(f"AI Service initialized with Groq model: {self.model}")
     
     async def process_query(self, query_input: AIQueryInput) -> QueryParameters:
         """
@@ -45,7 +37,7 @@ class AIService:
         Returns:
             QueryParameters: Structured query parameters
         """
-        if not self.llm:
+        if not self.groq_api_key:
             # Fallback to basic keyword extraction
             return self._extract_basic_parameters(query_input.question)
         
@@ -83,7 +75,7 @@ class AIService:
         Returns:
             str: AI-generated insights
         """
-        if not self.llm:
+        if not self.groq_api_key:
             return self._generate_basic_insights(data_summary)
         
         try:
@@ -112,7 +104,7 @@ class AIService:
         Returns:
             List[str]: List of recommendations
         """
-        if not self.llm:
+        if not self.groq_api_key:
             return self._generate_basic_recommendations(parameters)
         
         try:
@@ -210,15 +202,41 @@ class AIService:
         )
     
     async def _call_llm(self, prompt: str) -> str:
-        """Call the language model with the given prompt."""
-        if not self.llm:
-            raise ValueError("No LLM configured")
+        """Call Groq Llama model with the given prompt."""
+        if not self.groq_api_key:
+            raise ValueError("No Groq API key configured")
         
         try:
-            response = self.llm(prompt)
-            return response.strip()
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.groq_api_url,
+                    headers={
+                        "Authorization": f"Bearer {self.groq_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are an expert oceanographic data analyst. Provide concise, accurate responses."
+                            },
+                            {
+                                "role": "user",
+                                "content": prompt
+                            }
+                        ],
+                        "temperature": 0.1,
+                        "max_tokens": 1000
+                    },
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result["choices"][0]["message"]["content"].strip()
+                
         except Exception as e:
-            logger.error(f"LLM call failed: {e}")
+            logger.error(f"Groq API call failed: {e}")
             raise
     
     def _parse_ai_response(self, response: str) -> QueryParameters:

@@ -10,7 +10,7 @@ import time
 import logging
 
 from app.config import settings
-from app.database import init_db, close_db, get_db
+from app.database import init_db, close_db, get_db, check_db_health
 from app.schemas import ErrorResponse, FloatDetailSchema, AIQueryInput, AIQueryResponse, FloatSummarySchema
 from app.crud import (
     get_float_data_by_wmo_id, 
@@ -109,24 +109,20 @@ async def shutdown_event():
         logger.info("Database connections closed")
     except Exception as e:
         logger.error(f"Error closing database connections: {e}")
-
-
 # Health check endpoint
 @app.get("/health")
 async def health_check():
     """Basic health check endpoint."""
-    from app.database import check_db_health
-    from app.schemas import HealthCheck
     from datetime import datetime
     
     db_healthy = await check_db_health()
     
-    return HealthCheck(
-        status="healthy" if db_healthy else "unhealthy",
-        timestamp=datetime.utcnow(),
-        database=db_healthy,
-        version=settings.APP_VERSION
-    )
+    return {
+        "status": "healthy" if db_healthy else "unhealthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": db_healthy,
+        "version": settings.APP_VERSION
+    }
 
 
 # Root endpoint

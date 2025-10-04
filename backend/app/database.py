@@ -84,8 +84,9 @@ async def check_db_health() -> bool:
         bool: True if database is healthy, False otherwise
     """
     try:
+        from sqlalchemy import text
         async with AsyncSessionLocal() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
             return True
     except Exception:
         return False

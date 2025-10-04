@@ -17,7 +17,9 @@ from app.schemas import (
     FloatCreate,
     PaginatedResponse,
     ErrorResponse,
-    ErrorDetail
+    ErrorDetail,
+    ProfileSchema,
+    MeasurementSchema
 )
 from app.services.data_ingestion import ingestion_service
 from app.services.geospatial import geospatial_service
@@ -82,7 +84,8 @@ async def get_floats(
             items=float_summaries,
             total=total,
             page=page,
-            size=size
+            size=size,
+            pages=(total + size - 1) // size if size > 0 else 0
         )
         
     except Exception as e:
@@ -97,7 +100,7 @@ async def get_floats(
 async def get_float(
     float_id: int,
     include_profiles: bool = Query(True, description="Include profile data"),
-    include_measurements: bool = Query(False, description="Include measurement data"),
+    include_measurements: bool = Query(True, description="Include measurement data"),
     db: AsyncSession = Depends(get_db)
 ) -> FloatDetailSchema:
     """
@@ -128,7 +131,65 @@ async def get_float(
                 detail={"error": "Not Found", "message": f"Float {float_id} not found"}
             )
         
-        return FloatDetailSchema.from_orm(float_obj)
+        # Manually construct the response to avoid greenlet issues
+        profiles_data = []
+        if include_profiles and float_obj.profiles:
+            for profile in float_obj.profiles:
+                measurements_data = []
+                if include_measurements and profile.measurements:
+                    for measurement in profile.measurements:
+                        measurements_data.append(MeasurementSchema(
+                            id=measurement.id,
+                            profile_id=measurement.profile_id,
+                            pressure=measurement.pressure,
+                            depth=measurement.depth,
+                            temperature=measurement.temperature,
+                            salinity=measurement.salinity,
+                            dissolved_oxygen=measurement.dissolved_oxygen,
+                            ph=measurement.ph,
+                            nitrate=measurement.nitrate,
+                            chlorophyll=measurement.chlorophyll,
+                            pressure_qc=measurement.pressure_qc,
+                            temperature_qc=measurement.temperature_qc,
+                            salinity_qc=measurement.salinity_qc,
+                            temperature_adjusted=measurement.temperature_adjusted,
+                            salinity_adjusted=measurement.salinity_adjusted,
+                            measurement_order=measurement.measurement_order,
+                            created_at=measurement.created_at,
+                            updated_at=measurement.updated_at
+                        ))
+                
+                profiles_data.append(ProfileSchema(
+                    id=profile.id,
+                    float_id=profile.float_id,
+                    cycle_number=profile.cycle_number,
+                    profile_id=profile.profile_id,
+                    timestamp=profile.timestamp,
+                    latitude=profile.latitude,
+                    longitude=profile.longitude,
+                    direction=profile.direction,
+                    data_mode=profile.data_mode,
+                    measurements=measurements_data,
+                    created_at=profile.created_at,
+                    updated_at=profile.updated_at
+                ))
+        
+        return FloatDetailSchema(
+            id=float_obj.id,
+            wmo_id=float_obj.wmo_id,
+            deployment_latitude=float_obj.deployment_latitude,
+            deployment_longitude=float_obj.deployment_longitude,
+            platform_type=float_obj.platform_type,
+            institution=float_obj.institution,
+            project_name=float_obj.project_name,
+            pi_name=float_obj.pi_name,
+            status=float_obj.status,
+            deployment_date=float_obj.deployment_date,
+            last_update=float_obj.last_update,
+            profiles=profiles_data,
+            created_at=float_obj.created_at,
+            updated_at=float_obj.updated_at
+        )
         
     except HTTPException:
         raise
@@ -187,8 +248,8 @@ async def get_float_by_wmo(
 
 @router.get("/nearby/{latitude}/{longitude}", response_model=List[FloatSummarySchema])
 async def get_nearby_floats(
-    latitude: float = Query(..., ge=-90, le=90, description="Center latitude"),
-    longitude: float = Query(..., ge=-180, le=180, description="Center longitude"),
+    latitude: float,
+    longitude: float,
     radius_km: float = Query(100, ge=1, le=1000, description="Search radius in kilometers"),
     limit: int = Query(50, ge=1, le=500, description="Maximum number of results"),
     db: AsyncSession = Depends(get_db)

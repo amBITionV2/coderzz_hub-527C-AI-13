@@ -7,7 +7,11 @@ import "leaflet/dist/leaflet.css";
 import { LatLngTuple } from "leaflet";
 import { fetchFloats, FloatSummary, APIError } from "@/lib/api";
 
-export const MapView = () => {
+interface MapViewProps {
+  onFloatClick?: (floatId: number) => void;
+}
+
+export const MapView = ({ onFloatClick }: MapViewProps) => {
   const [floats, setFloats] = useState<FloatSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,11 +61,15 @@ export const MapView = () => {
   };
 
   const handleFloatClick = (floatId: number) => {
-    setSelectedFloats(prev => 
-      prev.includes(floatId) 
-        ? prev.filter(id => id !== floatId)
-        : [...prev, floatId]
-    );
+    if (onFloatClick) {
+      onFloatClick(floatId);
+    } else {
+      setSelectedFloats(prev => 
+        prev.includes(floatId) 
+          ? prev.filter(id => id !== floatId)
+          : [...prev, floatId]
+      );
+    }
   };
 
   const clearSelection = () => {
@@ -235,7 +243,7 @@ export const MapView = () => {
                 <CircleMarker
                   key={float.id}
                   center={[float.latitude!, float.longitude!] as LatLngTuple}
-                  radius={8}
+                  radius={5}
                   pathOptions={{
                     color: getStatusColor(float.status),
                     fillColor: getStatusColor(float.status),

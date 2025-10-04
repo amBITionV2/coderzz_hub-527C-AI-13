@@ -104,15 +104,57 @@ class AIQueryResponse(BaseModel):
 
 # Sample data generator
 def generate_sample_floats(count: int = 50) -> List[FloatSummary]:
-    """Generate sample float data for development."""
+    """Generate sample float data for development with realistic ocean positions."""
     floats = []
     institutions = ["WHOI", "SIO", "UW", "CSIRO", "BIO", "IFREMER", "JMA", "KORDI"]
     statuses = ["active", "active", "active", "maintenance", "inactive"]  # More active floats
     
+    # Define realistic ocean regions with approximate boundaries
+    ocean_regions = [
+        # North Pacific
+        {"lat_range": (10, 60), "lon_range": (-180, -120), "name": "North Pacific"},
+        {"lat_range": (10, 60), "lon_range": (120, 180), "name": "North Pacific West"},
+        
+        # South Pacific  
+        {"lat_range": (-60, -10), "lon_range": (-180, -70), "name": "South Pacific"},
+        {"lat_range": (-60, -10), "lon_range": (120, 180), "name": "South Pacific West"},
+        
+        # North Atlantic
+        {"lat_range": (10, 70), "lon_range": (-80, -10), "name": "North Atlantic"},
+        
+        # South Atlantic
+        {"lat_range": (-60, -10), "lon_range": (-50, 20), "name": "South Atlantic"},
+        
+        # Indian Ocean
+        {"lat_range": (-60, 30), "lon_range": (20, 120), "name": "Indian Ocean"},
+        
+        # Southern Ocean
+        {"lat_range": (-70, -40), "lon_range": (-180, 180), "name": "Southern Ocean"},
+        
+        # Arctic Ocean (limited)
+        {"lat_range": (70, 85), "lon_range": (-180, 180), "name": "Arctic Ocean"},
+        
+        # Mediterranean-like regions
+        {"lat_range": (30, 45), "lon_range": (-10, 40), "name": "North Atlantic East"},
+    ]
+    
     for i in range(count):
         wmo_id = f"190{1000 + i}"
-        lat = random.uniform(-70, 70)  # Avoid polar regions mostly
-        lon = random.uniform(-180, 180)
+        
+        # Select a random ocean region
+        region = random.choice(ocean_regions)
+        
+        # Generate coordinates within that ocean region
+        lat = random.uniform(region["lat_range"][0], region["lat_range"][1])
+        lon = random.uniform(region["lon_range"][0], region["lon_range"][1])
+        
+        # Add some variation to avoid perfect grid patterns
+        lat += random.uniform(-2, 2)
+        lon += random.uniform(-5, 5)
+        
+        # Ensure coordinates stay within valid ranges
+        lat = max(-85, min(85, lat))
+        lon = max(-180, min(180, lon))
         
         float_data = FloatSummary(
             id=i + 1,
@@ -183,8 +225,7 @@ def generate_sample_profiles(float_id: int, count: int = 10) -> List[ProfileSche
     
     return profiles
 
-# Generate sample data
-SAMPLE_FLOATS = generate_sample_floats(50)
+# No sample data - all floats removed
 
 # API Endpoints
 @app.get("/")
@@ -205,7 +246,8 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "database": False,  # No database in simplified version
-        "version": "1.0.0-simplified"
+        "version": "1.0.0-simplified",
+        "debug": "FLOATS REMOVED - EMPTY DATA VERSION"
     }
 
 @app.post("/api/v1/query", response_model=AIQueryResponse)
@@ -243,8 +285,8 @@ async def process_ai_query(query_input: AIQueryInput) -> AIQueryResponse:
         general_search_term=query_input.question if not variables and not location else None
     )
     
-    # Filter floats based on simple criteria
-    matching_floats = SAMPLE_FLOATS.copy()
+    # Filter floats based on simple criteria - NO FLOATS
+    matching_floats = []  # Empty list - no sample floats
     
     # Simple location filtering
     if location:
@@ -314,15 +356,12 @@ async def get_float_by_wmo_id(wmo_id: str) -> FloatDetail:
     """
     Get detailed float data by WMO ID (simplified version).
     """
-    # Find float by WMO ID
+    # Find float by WMO ID - NO FLOATS AVAILABLE
     float_data = None
-    for f in SAMPLE_FLOATS:
-        if f.wmo_id == wmo_id:
-            float_data = f
-            break
+    # No sample floats available - all removed
     
-    if not float_data:
-        raise HTTPException(status_code=404, detail=f"Float with WMO ID {wmo_id} not found")
+    # Always return 404 since no floats exist
+    raise HTTPException(status_code=404, detail=f"Float with WMO ID {wmo_id} not found - no floats available")
     
     # Generate detailed float data
     now = datetime.utcnow().isoformat()
@@ -352,6 +391,7 @@ async def get_float_by_wmo_id(wmo_id: str) -> FloatDetail:
     return detailed_float
 
 @app.get("/api/v1/floats")
+@app.get("/api/v1/floats-empty")
 async def get_floats(
     page: int = 1,
     size: int = 50,
@@ -359,29 +399,22 @@ async def get_floats(
     wmo_id: Optional[str] = None
 ):
     """
-    Get paginated list of floats (simplified version).
+    Get paginated list of floats (simplified version) - NO FLOATS.
     """
-    floats = SAMPLE_FLOATS.copy()
+    import time
     
-    # Apply filters
-    if status:
-        floats = [f for f in floats if f.status == status]
-    if wmo_id:
-        floats = [f for f in floats if wmo_id.lower() in f.wmo_id.lower()]
-    
-    # Pagination
-    total = len(floats)
-    start = (page - 1) * size
-    end = start + size
-    items = floats[start:end]
-    
+    # FORCE EMPTY RESPONSE - NO FLOATS SHOULD BE RETURNED
     return {
-        "items": items,
-        "total": total,
+        "items": [],
+        "total": 0,
         "page": page,
         "size": size,
-        "pages": (total + size - 1) // size
+        "pages": 0,
+        "timestamp": time.time(),
+        "message": "FLOATS COMPLETELY REMOVED - EMPTY RESPONSE",
+        "debug": "This endpoint should return empty data"
     }
+
 
 if __name__ == "__main__":
     import uvicorn
