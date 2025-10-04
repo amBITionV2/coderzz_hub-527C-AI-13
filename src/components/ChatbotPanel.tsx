@@ -15,7 +15,12 @@ interface Message {
   error?: boolean;
 }
 
-export const ChatbotPanel = () => {
+interface ChatbotPanelProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const ChatbotPanel = ({ isOpen, onClose }: ChatbotPanelProps) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
@@ -98,19 +103,34 @@ export const ChatbotPanel = () => {
   };
 
   return (
-    <div className="w-96 bg-ocean-darker border-l border-border flex flex-col h-screen">
+    <div 
+      className={`fixed right-0 top-0 w-96 bg-ocean-darker border-l border-border flex flex-col h-screen transition-transform duration-300 ease-in-out ${
+        isOpen ? 'translate-x-0' : 'translate-x-full'
+      }`}
+      style={{ zIndex: 1001 }}
+    >
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shadow-glow-cyan-sm">
-            <Sparkles className="w-5 h-5 text-primary" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shadow-glow-cyan-sm">
+              <Sparkles className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                FloatChat AI
+              </h2>
+              <p className="text-xs text-muted-foreground">Ask me anything about ocean data</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-              FloatChat AI
-            </h2>
-            <p className="text-xs text-muted-foreground">Ask me anything about ocean data</p>
-          </div>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            ✕
+          </Button>
         </div>
       </div>
 

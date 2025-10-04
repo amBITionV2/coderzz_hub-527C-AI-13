@@ -8,6 +8,7 @@ import { fetchFloatDetail, FloatDetail as FloatDetailType } from "@/lib/api";
 interface FloatDetailProps {
   floatId: number;
   onClose: () => void;
+  onOpenChat?: () => void;
 }
 
 export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
@@ -155,7 +156,7 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4 p-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-6">
         <Card className="bg-slate-800 border-slate-700 p-4">
           <div className="text-sm text-slate-400 mb-1">Status</div>
           <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm font-medium ${getStatusBadge(floatData.status)}`}>
@@ -228,7 +229,7 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
       </div>
 
       {/* Charts Grid */}
-      <div className="grid grid-cols-2 gap-6 px-6 pb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 px-6 pb-6">
         {/* Temperature Profile */}
         <Card className="bg-slate-800 border-slate-700 p-4">
           <div className="flex items-center gap-2 mb-4">
@@ -257,11 +258,12 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
                 labelStyle={{ color: '#94a3b8' }}
               />
               <Line 
-                type="monotone" 
+                type="natural" 
                 dataKey="temperature" 
                 stroke="#ef4444" 
                 strokeWidth={2}
                 dot={false}
+                connectNulls
               />
             </LineChart>
           </ResponsiveContainer>
@@ -295,11 +297,12 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
                 labelStyle={{ color: '#94a3b8' }}
               />
               <Line 
-                type="monotone" 
+                type="natural" 
                 dataKey="salinity" 
                 stroke="#06b6d4" 
                 strokeWidth={2}
                 dot={false}
+                connectNulls
               />
             </LineChart>
           </ResponsiveContainer>
@@ -334,11 +337,12 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
                   labelStyle={{ color: '#94a3b8' }}
                 />
                 <Line 
-                  type="monotone" 
+                  type="natural" 
                   dataKey="oxygen" 
                   stroke="#3b82f6" 
                   strokeWidth={2}
                   dot={false}
+                  connectNulls
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -415,7 +419,7 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
       <div className="px-6 pb-6">
         <Card className="bg-slate-800 border-slate-700 p-4">
           <h3 className="font-semibold mb-4">Float Information</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-slate-400">Platform Type:</span>
               <span className="ml-2 text-white">{floatData.platform_type || 'N/A'}</span>
