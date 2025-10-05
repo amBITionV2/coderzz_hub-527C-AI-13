@@ -171,6 +171,7 @@ class QueryParameters(BaseModel):
     end_date: Optional[datetime] = Field(None, description="End date for temporal filtering")
     variables: List[str] = Field(default_factory=list, description="Requested oceanographic variables")
     depth_range: Optional[List[float]] = Field(None, description="Depth range [min_depth, max_depth] in meters")
+    status: Optional[str] = Field(None, description="Float status filter (active, inactive, maintenance)")
     general_search_term: Optional[str] = Field(None, description="General search term for text matching")
     
     @validator('bbox')

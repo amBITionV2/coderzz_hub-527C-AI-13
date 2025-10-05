@@ -204,7 +204,7 @@ export async function postQuery(question: string): Promise<AIQueryResponse> {
     throw new APIError('Question cannot be empty');
   }
 
-  return apiRequest<AIQueryResponse>('/api/v1/query', {
+  return apiRequest<AIQueryResponse>('/api/v1/ai/query', {
     method: 'POST',
     body: JSON.stringify({
       question: question.trim(),

@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import "leaflet/dist/leaflet.css";
 import { LatLngTuple } from "leaflet";
 import { fetchFloats, FloatSummary, APIError } from "@/lib/api";
+import { useHighlight } from "@/contexts/HighlightContext";
 
 interface MapViewProps {
   onFloatClick?: (floatId: number) => void;
@@ -16,6 +17,7 @@ export const MapView = ({ onFloatClick }: MapViewProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedFloats, setSelectedFloats] = useState<number[]>([]);
+  const { highlightedFloats } = useHighlight();
 
   // Load float data on component mount
   useEffect(() => {
@@ -131,18 +133,6 @@ export const MapView = ({ onFloatClick }: MapViewProps) => {
         )}
 
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-success" />
-            <span className="text-sm font-medium text-success">{statusCounts.active} Active</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-warning" />
-            <span className="text-sm font-medium text-warning">{statusCounts.maintenance} Maintenance</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Power className="w-4 h-4 text-destructive" />
-            <span className="text-sm font-medium text-destructive">{statusCounts.inactive} Inactive</span>
-          </div>
           <div className="ml-auto text-sm text-muted-foreground">
             Displaying {selectedFloats.length > 0 ? selectedFloats.length : floats.length} of {floats.length} floats
           </div>
@@ -151,54 +141,16 @@ export const MapView = ({ onFloatClick }: MapViewProps) => {
 
       {/* Map Area */}
       <div className="flex-1 relative overflow-hidden" style={{ minHeight: '500px' }}>
-        {/* Float Info Panel */}
-        <div className="absolute top-6 left-6 z-[1000]">
-          <div className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-4 shadow-lg max-w-sm">
-            <div className="flex items-center gap-3 mb-3">
-              <Activity className="w-5 h-5 text-primary" />
-              <span className="text-sm font-semibold text-foreground">
-                Float Positions ({floats.length} total)
+        {/* Highlighted Floats Indicator */}
+        {highlightedFloats.length > 0 && (
+          <div className="absolute top-6 left-6 z-[1000]">
+            <div className="bg-card/90 backdrop-blur-sm border border-cyan-500/30 rounded-lg p-3 shadow-lg">
+              <span className="text-sm text-cyan-400 font-medium">
+                🔆 {highlightedFloats.length} float{highlightedFloats.length !== 1 ? 's' : ''} highlighted
               </span>
             </div>
-            
-            {selectedFloats.length > 0 && (
-              <div className="mb-3 p-2 bg-primary/10 rounded">
-                <span className="text-xs text-primary font-medium">
-                  {selectedFloats.length} float{selectedFloats.length !== 1 ? 's' : ''} selected
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearSelection}
-                  className="ml-2 h-6 px-2 text-xs border-primary/30 text-primary hover:bg-primary/10"
-                >
-                  Clear
-                </Button>
-              </div>
-            )}
-            
-            <div className="text-xs text-muted-foreground space-y-1">
-              <div>🌊 <strong>Map Center:</strong> 0°, 0° (Equator)</div>
-              <div>🔍 <strong>Zoom:</strong> Global view (Level 2)</div>
-              <div>📍 <strong>Markers:</strong> {floats.filter(f => f.latitude && f.longitude).length} positioned</div>
-            </div>
-            
-            {floats.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-border/50">
-                <div className="text-xs text-muted-foreground">
-                  <strong>Sample Positions:</strong>
-                </div>
-                {floats.slice(0, 3).map(float => (
-                  <div key={float.id} className="text-xs text-muted-foreground mt-1">
-                    <span className="font-mono">
-                      {float.wmo_id}: {float.latitude?.toFixed(1)}°, {float.longitude?.toFixed(1)}°
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-        </div>
+        )}
 
         {/* Loading Overlay */}
         {isLoading && (
@@ -239,16 +191,19 @@ export const MapView = ({ onFloatClick }: MapViewProps) => {
                 console.log(`Float ${float.wmo_id}: ${float.latitude}, ${float.longitude} (${float.status})`);
               }
               
+              const isHighlighted = highlightedFloats.includes(float.id);
+              const isSelected = selectedFloats.includes(float.id);
+              
               return (
                 <CircleMarker
                   key={float.id}
                   center={[float.latitude!, float.longitude!] as LatLngTuple}
-                  radius={5}
+                  radius={isHighlighted ? 8 : 5}
                   pathOptions={{
-                    color: getStatusColor(float.status),
-                    fillColor: getStatusColor(float.status),
-                    fillOpacity: selectedFloats.includes(float.id) ? 1.0 : 0.8,
-                    weight: selectedFloats.includes(float.id) ? 3 : 2,
+                    color: isHighlighted ? "#00ffff" : getStatusColor(float.status),
+                    fillColor: isHighlighted ? "#00ffff" : getStatusColor(float.status),
+                    fillOpacity: isHighlighted ? 0.9 : (isSelected ? 1.0 : 0.8),
+                    weight: isHighlighted ? 4 : (isSelected ? 3 : 2),
                     stroke: true,
                   }}
                   eventHandlers={{
@@ -279,25 +234,6 @@ export const MapView = ({ onFloatClick }: MapViewProps) => {
               );
             })}
         </MapContainer>
-
-        {/* Legend */}
-        <div className="absolute bottom-6 left-6 z-[1000] bg-card/90 backdrop-blur-sm border border-border rounded-lg p-4 shadow-lg">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Float Status</h3>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-success" />
-              <span className="text-xs text-foreground">Active</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-warning" />
-              <span className="text-xs text-foreground">Maintenance</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-destructive" />
-              <span className="text-xs text-foreground">Inactive</span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

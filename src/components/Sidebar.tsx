@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Waves, Activity, Droplets, MapPin, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { fetchFloats, FloatSummary, APIError } from "@/lib/api";
 
 export const Sidebar = () => {
@@ -123,115 +124,45 @@ export const Sidebar = () => {
 
       {/* Statistics */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Activity className="w-4 h-4 text-primary" />
-            Global Ocean Monitoring
-          </h2>
-          
-          <Card className="p-4 bg-card border-border space-y-4">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="w-4 h-4 animate-spin text-primary mr-2" />
-                <span className="text-sm text-muted-foreground">Loading...</span>
-              </div>
-            ) : error ? (
-              <div className="text-center py-4">
-                <span className="text-sm text-destructive">Failed to load data</span>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Active Floats</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold text-success">{stats.active}</span>
-                    <span className="text-sm text-muted-foreground">/</span>
-                    <span className="text-sm text-muted-foreground">{stats.total}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Maintenance</span>
-                  <span className="text-lg font-bold text-warning">{stats.maintenance}</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Data Quality</span>
-                  <span className="text-lg font-bold text-foreground">{stats.dataQuality}%</span>
-                </div>
-              </>
-            )}
-          </Card>
-        </div>
-
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-primary" />
-            Ocean Regions
-          </h3>
-          {isLoading ? (
-            <Card className="p-3 bg-card border-border">
-              <div className="flex items-center justify-center">
-                <Loader2 className="w-4 h-4 animate-spin text-primary mr-2" />
-                <span className="text-xs text-muted-foreground">Loading regions...</span>
-              </div>
-            </Card>
-          ) : error ? (
-            <Card className="p-3 bg-card border-border">
-              <span className="text-xs text-destructive">Failed to load regions</span>
-            </Card>
-          ) : oceanRegions.length > 0 ? (
-            <div className="space-y-2">
-              {oceanRegions.map((region) => (
-                <div
-                  key={region.name}
-                  className="flex items-center justify-between p-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer"
-                >
-                  <span className="text-sm text-foreground">{region.name}</span>
-                  <Badge variant="secondary" className="text-xs bg-primary/20 text-primary border-0">
-                    {region.count}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Card className="p-3 bg-card border-border">
-              <span className="text-xs text-muted-foreground">No regional data available</span>
-            </Card>
-          )}
-        </div>
-
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Droplets className="w-4 h-4 text-primary" />
-            Float Status Summary
-          </h3>
-          <Card className="p-3 bg-card border-border">
-            {isLoading ? (
-              <div className="flex items-center justify-center">
-                <Loader2 className="w-4 h-4 animate-spin text-primary mr-2" />
-                <span className="text-xs text-muted-foreground">Loading...</span>
-              </div>
-            ) : error ? (
-              <span className="text-xs text-destructive">Failed to load status</span>
-            ) : (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
+            <span className="text-sm text-muted-foreground">Loading float data...</span>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <span className="text-sm text-destructive mb-2">Failed to load data</span>
+            <Button variant="outline" size="sm" onClick={loadFloats}>
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-primary" />
+              Ocean Regions
+            </h3>
+            {oceanRegions.length > 0 ? (
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">🟢 Active</span>
-                  <span className="text-xs font-medium text-success">{stats.active}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">🟡 Maintenance</span>
-                  <span className="text-xs font-medium text-warning">{stats.maintenance}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">🔴 Inactive</span>
-                  <span className="text-xs font-medium text-destructive">{stats.inactive}</span>
-                </div>
+                {oceanRegions.map((region) => (
+                  <div
+                    key={region.name}
+                    className="flex items-center justify-between p-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer"
+                  >
+                    <span className="text-sm text-foreground">{region.name}</span>
+                    <Badge variant="secondary" className="text-xs bg-primary/20 text-primary border-0">
+                      {region.count}
+                    </Badge>
+                  </div>
+                ))}
               </div>
+            ) : (
+              <Card className="p-3 bg-card border-border">
+                <span className="text-xs text-muted-foreground">No regional data available</span>
+              </Card>
             )}
-          </Card>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

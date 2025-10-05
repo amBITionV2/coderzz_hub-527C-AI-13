@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
-import { ArrowLeft, Activity, Droplets, Wind, TrendingUp, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { ArrowLeft, Activity, Droplets, Wind, TrendingUp, Calendar, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { fetchFloatDetail, FloatDetail as FloatDetailType } from "@/lib/api";
+import html2canvas from 'html2canvas';
 
 interface FloatDetailProps {
   floatId: number;
@@ -16,6 +17,9 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState(0);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
+  const chartsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadFloatDetail();
@@ -131,6 +135,28 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
     return Math.round((validMeasurements / profile.measurements.length) * 100);
   };
 
+  const handleDownloadCharts = async () => {
+    if (!chartsContainerRef.current || !floatData) return;
+    
+    setIsDownloading(true);
+    try {
+      const canvas = await html2canvas(chartsContainerRef.current, {
+        backgroundColor: '#0f172a',
+        scale: 2,
+        logging: false,
+      });
+      
+      const link = document.createElement('a');
+      link.download = `Float_${floatData.wmo_id}_Profile_${selectedProfile + 1}_Charts.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (error) {
+      console.error('Error downloading charts:', error);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   return (
     <div className="flex-1 w-full h-full bg-slate-900 text-white overflow-y-auto">
       {/* Header */}
@@ -140,9 +166,49 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600">
-            Live Mode
-          </Button>
+          <div className="flex items-center gap-2">
+            {showInsights && (
+              <Button 
+                onClick={handleDownloadCharts} 
+                disabled={isDownloading}
+                variant="outline" 
+                size="sm" 
+                className="border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10"
+              >
+                {isDownloading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-cyan-400 mr-2"></div>
+                    Downloading...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download Charts
+                  </>
+                )}
+              </Button>
+            )}
+            {!showInsights ? (
+              <Button 
+                onClick={() => setShowInsights(true)}
+                size="sm" 
+                className="bg-cyan-500 hover:bg-cyan-600"
+              >
+                <TrendingUp className="mr-2 h-4 w-4" />
+                View Insights & Charts
+              </Button>
+            ) : (
+              <Button 
+                onClick={() => setShowInsights(false)}
+                variant="outline"
+                size="sm" 
+                className="border-slate-600 text-slate-400 hover:bg-slate-800"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Summary
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="flex items-start justify-between">
@@ -155,8 +221,86 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-6">
+      {!showInsights ? (
+        /* Summary View */
+        <div className="p-6 max-w-2xl mx-auto">
+          <Card className="bg-slate-800 border-slate-700 p-8">
+            <h2 className="text-2xl font-bold mb-6 text-cyan-400">Float Information</h2>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                <span className="text-slate-400">Float ID:</span>
+                <span className="text-white font-semibold">{floatData.id}</span>
+              </div>
+              
+              <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                <span className="text-slate-400">WMO ID:</span>
+                <span className="text-white font-semibold">{floatData.wmo_id}</span>
+              </div>
+              
+              <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                <span className="text-slate-400">Status:</span>
+                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm font-medium ${getStatusBadge(floatData.status)}`}>
+                  <Activity className="h-3 w-3" />
+                  {floatData.status.charAt(0).toUpperCase() + floatData.status.slice(1)}
+                </div>
+              </div>
+              
+              {profile && (
+                <>
+                  <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                    <span className="text-slate-400">Latitude:</span>
+                    <span className="text-white font-semibold">{profile.latitude?.toFixed(4)}°</span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                    <span className="text-slate-400">Longitude:</span>
+                    <span className="text-white font-semibold">{profile.longitude?.toFixed(4)}°</span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                    <span className="text-slate-400">Last Update:</span>
+                    <span className="text-white font-semibold">{new Date(profile.timestamp).toLocaleString()}</span>
+                  </div>
+                </>
+              )}
+              
+              <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                <span className="text-slate-400">Total Profiles:</span>
+                <span className="text-white font-semibold">{floatData.profiles.length}</span>
+              </div>
+              
+              {floatData.institution && (
+                <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                  <span className="text-slate-400">Institution:</span>
+                  <span className="text-white font-semibold">{floatData.institution}</span>
+                </div>
+              )}
+              
+              {floatData.platform_type && (
+                <div className="flex justify-between items-center pb-3">
+                  <span className="text-slate-400">Platform Type:</span>
+                  <span className="text-white font-semibold">{floatData.platform_type}</span>
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-8 text-center">
+              <Button 
+                onClick={() => setShowInsights(true)}
+                size="lg"
+                className="bg-cyan-500 hover:bg-cyan-600 w-full"
+              >
+                <TrendingUp className="mr-2 h-5 w-5" />
+                View Detailed Insights & Charts
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : (
+        <>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-6">
         <Card className="bg-slate-800 border-slate-700 p-4">
           <div className="text-sm text-slate-400 mb-1">Status</div>
           <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm font-medium ${getStatusBadge(floatData.status)}`}>
@@ -249,7 +393,7 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
       </div>
 
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 px-6 pb-6">
+      <div ref={chartsContainerRef} className="grid grid-cols-1 lg:grid-cols-2 gap-6 px-6 pb-6">
         {/* Temperature Profile */}
         <Card className="bg-slate-800 border-slate-700 p-4">
           <div className="flex items-center gap-2 mb-4">
@@ -469,6 +613,8 @@ export const FloatDetail = ({ floatId, onClose }: FloatDetailProps) => {
           </div>
         </Card>
       </div>
+        </>
+      )}
     </div>
   );
 };

@@ -40,10 +40,13 @@ class GeospatialQueryService:
             Tuple of (floats list, data summary)
         """
         async with AsyncSessionLocal() as session:
-            # Build base query
-            query = select(Float).options(
-                selectinload(Float.profiles).selectinload(Profile.measurements)
-            )
+            # Build base query - DON'T load all profiles/measurements for performance
+            # We'll only load summary data, not full profile details
+            query = select(Float)
+            
+            # Apply status filter first (most common filter)
+            if parameters.status:
+                query = query.where(Float.status == parameters.status)
             
             # Apply spatial filters
             if parameters.bbox:
@@ -76,7 +79,7 @@ class GeospatialQueryService:
             # Convert to summary schemas
             float_summaries = []
             for float_obj in floats:
-                summary = await self._create_float_summary(float_obj)
+                summary = await self._create_float_summary(float_obj, session)
                 float_summaries.append(summary)
             
             # Generate data summary
@@ -261,17 +264,20 @@ class GeospatialQueryService:
             return stats
     
     def _apply_bbox_filter(self, query, bbox: List[float]):
-        """Apply bounding box filter to float query."""
+        """Apply bounding box filter to query."""
         min_lon, min_lat, max_lon, max_lat = bbox
         
-        # Create bounding box polygon
-        bbox_wkt = f'POLYGON(({min_lon} {min_lat}, {max_lon} {min_lat}, {max_lon} {max_lat}, {min_lon} {max_lat}, {min_lon} {min_lat}))'
-        bbox_geom = ST_GeomFromText(bbox_wkt, 4326)
-        
-        # Filter floats that have profiles within the bounding box
-        return query.join(Profile).where(
-            ST_Contains(bbox_geom, Profile.location)
+        # Use subquery to avoid conflicts with other filters
+        subq = select(Profile.float_id).where(
+            and_(
+                Profile.latitude >= min_lat,
+                Profile.latitude <= max_lat,
+                Profile.longitude >= min_lon,
+                Profile.longitude <= max_lon
+            )
         ).distinct()
+        
+        return query.where(Float.id.in_(subq))
     
     async def _apply_location_filter(self, query, location: str):
         """Apply location name filter to query."""
@@ -279,33 +285,45 @@ class GeospatialQueryService:
         # For now, we'll do simple keyword matching
         location_lower = location.lower()
         
-        # Define some basic ocean regions
+        # Define ocean regions with correct bounding boxes [min_lon, min_lat, max_lon, max_lat]
         region_bounds = {
-            'pacific': [-180, -60, -70, 60],
-            'atlantic': [-80, -60, 20, 70],
-            'indian': [20, -60, 120, 30],
-            'arctic': [-180, 60, 180, 90],
-            'southern': [-180, -90, 180, -60]
+            'pacific': [-180, -60, -70, 60],  # Pacific Ocean
+            'atlantic': [-80, -60, 20, 70],   # Atlantic Ocean (Western)
+            'indian': [20, -60, 120, 30],     # Indian Ocean
+            'arctic': [-180, 66, 180, 90],    # Arctic Ocean (above 66°N)
+            'southern': [-180, -90, 180, -60], # Southern Ocean
+            'south': [-180, -90, 180, -60]    # Alias for Southern
         }
         
-        for region, bbox in region_bounds.items():
+        # Check for multiple ocean names in query
+        matched_regions = []
+        for region in region_bounds.keys():
             if region in location_lower:
-                return self._apply_bbox_filter(query, bbox)
+                matched_regions.append(region)
+        
+        # Use the first matched region
+        if matched_regions:
+            region = matched_regions[0]
+            bbox = region_bounds[region]
+            return self._apply_bbox_filter(query, bbox)
         
         # If no match, return original query
         return query
     
     def _apply_temporal_filter(self, query, start_date: Optional[datetime], end_date: Optional[datetime]):
         """Apply temporal filter to query."""
-        # Filter based on profile timestamps
-        query = query.join(Profile)
-        
+        # Use subquery to avoid duplicate joins
+        conditions = []
         if start_date:
-            query = query.where(Profile.timestamp >= start_date)
+            conditions.append(Profile.timestamp >= start_date)
         if end_date:
-            query = query.where(Profile.timestamp <= end_date)
+            conditions.append(Profile.timestamp <= end_date)
         
-        return query.distinct()
+        if conditions:
+            subq = select(Profile.float_id).where(and_(*conditions)).distinct()
+            query = query.where(Float.id.in_(subq))
+        
+        return query
     
     def _apply_variable_filter(self, query, variables: List[str]):
         """Apply variable availability filter."""
@@ -318,9 +336,12 @@ class GeospatialQueryService:
                 measurement_filters.append(column.isnot(None))
         
         if measurement_filters:
-            query = query.join(Profile).join(Measurement).where(
+            # Use subquery to avoid duplicate joins
+            subq = select(Profile.float_id).join(Measurement).where(
                 or_(*measurement_filters)
             ).distinct()
+            
+            query = query.where(Float.id.in_(subq))
         
         return query
     
@@ -332,12 +353,15 @@ class GeospatialQueryService:
         min_pressure = min_depth * 1.02
         max_pressure = max_depth * 1.02
         
-        query = query.join(Profile).join(Measurement).where(
+        # Use subquery to avoid duplicate joins
+        subq = select(Profile.float_id).join(Measurement).where(
             and_(
                 Measurement.pressure >= min_pressure,
                 Measurement.pressure <= max_pressure
             )
         ).distinct()
+        
+        query = query.where(Float.id.in_(subq))
         
         return query
     
@@ -379,14 +403,33 @@ class GeospatialQueryService:
         
         return query
     
-    async def _create_float_summary(self, float_obj: Float) -> FloatSummarySchema:
-        """Create float summary from float object."""
+    async def _create_float_summary(self, float_obj: Float, session: AsyncSession = None) -> FloatSummarySchema:
+        """Create float summary from float object - optimized to query only latest profile."""
         import math
         
-        # Get latest profile for position
-        latest_profile = None
-        if float_obj.profiles:
-            latest_profile = max(float_obj.profiles, key=lambda p: p.timestamp)
+        # Query for latest profile and profile count efficiently
+        if session:
+            # Get profile count
+            count_result = await session.execute(
+                select(func.count(Profile.id)).where(Profile.float_id == float_obj.id)
+            )
+            profile_count = count_result.scalar() or 0
+            
+            # Get latest profile for position (only 1 profile, not all)
+            latest_result = await session.execute(
+                select(Profile)
+                .where(Profile.float_id == float_obj.id)
+                .order_by(Profile.timestamp.desc())
+                .limit(1)
+            )
+            latest_profile = latest_result.scalar_one_or_none()
+        else:
+            # Fallback to loaded profiles if no session provided
+            latest_profile = None
+            profile_count = 0
+            if hasattr(float_obj, 'profiles') and float_obj.profiles:
+                latest_profile = max(float_obj.profiles, key=lambda p: p.timestamp)
+                profile_count = len(float_obj.profiles)
         
         # Get latitude/longitude, handling NaN values
         lat = latest_profile.latitude if latest_profile else float_obj.deployment_latitude
@@ -405,7 +448,7 @@ class GeospatialQueryService:
             longitude=lon,
             status=float_obj.status,
             last_update=float_obj.last_update,
-            profile_count=len(float_obj.profiles),
+            profile_count=profile_count,
             latest_profile_date=latest_profile.timestamp if latest_profile else None
         )
     
@@ -422,56 +465,134 @@ class GeospatialQueryService:
         floats: List[Float], 
         parameters: QueryParameters
     ) -> Dict[str, Any]:
-        """Generate summary statistics for the query results."""
+        """Generate summary statistics for the query results - OPTIMIZED."""
+        if not floats:
+            return {
+                'float_count': 0,
+                'profile_count': 0,
+                'measurement_count': 0,
+                'date_range': None,
+                'spatial_extent': None
+            }
+        
+        float_ids = [f.id for f in floats]
+        
+        # Get profile count efficiently
+        profile_count_result = await session.execute(
+            select(func.count(Profile.id)).where(Profile.float_id.in_(float_ids))
+        )
+        profile_count = profile_count_result.scalar() or 0
+        
+        # Get measurement count efficiently
+        measurement_count_result = await session.execute(
+            select(func.count(Measurement.id))
+            .select_from(Measurement)
+            .join(Profile)
+            .where(Profile.float_id.in_(float_ids))
+        )
+        measurement_count = measurement_count_result.scalar() or 0
+        
+        # Get date range efficiently
+        date_range_result = await session.execute(
+            select(
+                func.min(Profile.timestamp),
+                func.max(Profile.timestamp)
+            ).where(Profile.float_id.in_(float_ids))
+        )
+        date_range = date_range_result.one()
+        
+        # Get spatial extent efficiently
+        spatial_result = await session.execute(
+            select(
+                func.min(Profile.longitude),
+                func.max(Profile.longitude),
+                func.min(Profile.latitude),
+                func.max(Profile.latitude)
+            ).where(Profile.float_id.in_(float_ids))
+        )
+        spatial_extent = spatial_result.one()
+        
         summary = {
             'float_count': len(floats),
-            'profile_count': sum(len(f.profiles) for f in floats),
-            'measurement_count': 0,
-            'date_range': None,
-            'spatial_extent': None
+            'profile_count': profile_count,
+            'measurement_count': measurement_count,
+            'date_range': {
+                'start': date_range[0].isoformat() if date_range[0] else None,
+                'end': date_range[1].isoformat() if date_range[1] else None
+            } if date_range[0] else None,
+            'spatial_extent': {
+                'min_longitude': float(spatial_extent[0]) if spatial_extent[0] else None,
+                'max_longitude': float(spatial_extent[1]) if spatial_extent[1] else None,
+                'min_latitude': float(spatial_extent[2]) if spatial_extent[2] else None,
+                'max_latitude': float(spatial_extent[3]) if spatial_extent[3] else None
+            } if spatial_extent[0] else None
         }
         
-        if not floats:
-            return summary
-        
-        # Calculate measurement count
-        for float_obj in floats:
-            for profile in float_obj.profiles:
-                summary['measurement_count'] += len(profile.measurements)
-        
-        # Calculate date range
-        all_dates = []
-        for float_obj in floats:
-            for profile in float_obj.profiles:
-                all_dates.append(profile.timestamp)
-        
-        if all_dates:
-            summary['date_range'] = {
-                'start': min(all_dates),
-                'end': max(all_dates)
-            }
-        
-        # Calculate spatial extent
-        all_positions = []
-        for float_obj in floats:
-            for profile in float_obj.profiles:
-                all_positions.append((profile.longitude, profile.latitude))
-        
-        if all_positions:
-            lons, lats = zip(*all_positions)
-            summary['spatial_extent'] = {
-                'min_longitude': min(lons),
-                'max_longitude': max(lons),
-                'min_latitude': min(lats),
-                'max_latitude': max(lats)
-            }
-        
-        # Add variable-specific statistics
+        # Add variable statistics if variables are requested
         if parameters.variables:
-            stats = await self.calculate_ocean_statistics(parameters)
-            summary['variable_statistics'] = stats
+            var_stats = await self._calculate_variable_statistics(session, float_ids, parameters.variables)
+            if var_stats:
+                summary['variable_statistics'] = var_stats
         
         return summary
+    
+    async def _calculate_variable_statistics(
+        self, 
+        session: AsyncSession, 
+        float_ids: List[int], 
+        variables: List[str]
+    ) -> Dict[str, Dict[str, float]]:
+        """Calculate statistics for requested oceanographic variables."""
+        stats = {}
+        
+        # Map variable names to database columns
+        variable_map = {
+            'temperature': Measurement.temperature,
+            'salinity': Measurement.salinity,
+            'pressure': Measurement.pressure,
+            'dissolved_oxygen': Measurement.dissolved_oxygen,
+            'ph': Measurement.ph,
+            'nitrate': Measurement.nitrate,
+            'chlorophyll': Measurement.chlorophyll
+        }
+        
+        for var in variables:
+            if var not in variable_map:
+                continue
+            
+            column = variable_map[var]
+            
+            # Calculate statistics for this variable
+            result = await session.execute(
+                select(
+                    func.count(column).label('count'),
+                    func.avg(column).label('mean'),
+                    func.min(column).label('min'),
+                    func.max(column).label('max'),
+                    func.stddev(column).label('stddev')
+                )
+                .select_from(Measurement)
+                .join(Profile)
+                .where(
+                    and_(
+                        Profile.float_id.in_(float_ids),
+                        column.isnot(None)
+                    )
+                )
+            )
+            
+            row = result.one()
+            
+            if row.count and row.count > 0:
+                stats[var] = {
+                    'count': int(row.count),
+                    'mean': float(row.mean) if row.mean else None,
+                    'min': float(row.min) if row.min else None,
+                    'max': float(row.max) if row.max else None,
+                    'stddev': float(row.stddev) if row.stddev else None
+                }
+        
+        return stats
 
 
 # Global geospatial service instance

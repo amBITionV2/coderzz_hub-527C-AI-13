@@ -20,7 +20,7 @@ class AIService:
     def __init__(self):
         self.groq_api_key = settings.GROQ_API_KEY
         self.groq_api_url = "https://api.groq.com/openai/v1/chat/completions"
-        self.model = "llama-3.3-70b-versatile"  # Groq's Llama model
+        self.model = "gemma2-9b-it"  # Fast and efficient model
         
         if not self.groq_api_key:
             logger.warning("No Groq API key configured - AI features will be limited")
@@ -133,6 +133,7 @@ class AIService:
         - end_date: End date in ISO format if temporal range mentioned
         - variables: List of oceanographic variables (temperature, salinity, pressure, etc.)
         - depth_range: Depth range [min_depth, max_depth] in meters if mentioned
+        - status: Float status (active, inactive, or maintenance) if mentioned in query
         - general_search_term: Any general search terms for text matching
         
         Return only valid JSON. Use null for missing values.
@@ -253,6 +254,7 @@ class AIService:
                 end_date=data.get("end_date"),
                 variables=data.get("variables", []),
                 depth_range=data.get("depth_range"),
+                status=data.get("status"),
                 general_search_term=data.get("general_search_term")
             )
             
@@ -285,66 +287,191 @@ class AIService:
         """Basic parameter extraction without AI."""
         question_lower = question.lower()
         
-        # Extract variables
-        variables = []
-        if 'temperature' in question_lower:
-            variables.append('temperature')
-        if 'salinity' in question_lower:
-            variables.append('salinity')
-        if 'pressure' in question_lower:
-            variables.append('pressure')
-        if 'oxygen' in question_lower:
-            variables.append('dissolved_oxygen')
+        # Check for float ID queries (e.g., "show me float 123", "data for float id 5904818")
+        import re
+        float_id_patterns = [
+            r'float\s+(?:id\s+)?(\d+)',
+            r'float\s+#(\d+)',
+            r'id\s+(\d+)',
+            r'wmo\s+(?:id\s+)?(\d+)',
+        ]
         
-        # Extract location keywords
+        for pattern in float_id_patterns:
+            match = re.search(pattern, question_lower)
+            if match:
+                float_id = match.group(1)
+                # Store float ID in general_search_term with special prefix
+                return QueryParameters(general_search_term=f"FLOAT_ID:{float_id}")
+        
+        # Check if query is relevant to oceanographic data
+        irrelevant_keywords = ['weather', 'stock', 'news', 'sports', 'movie', 'music', 'recipe', 'game', 'joke', 'story', 'song']
+        oceanographic_keywords = ['float', 'ocean', 'temperature', 'salinity', 'pressure', 'depth', 'water', 'sea', 'marine', 'oxygen', 'pacific', 'atlantic', 'indian', 'data', 'measurement']
+        
+        # If query contains irrelevant keywords, reject
+        if any(keyword in question_lower for keyword in irrelevant_keywords):
+            return QueryParameters()
+        
+        # If query doesn't contain any oceanographic keywords and is very short, might be irrelevant
+        if not any(keyword in question_lower for keyword in oceanographic_keywords) and len(question_lower.split()) < 8:
+            # Check if it's a greeting or casual conversation
+            casual_phrases = ['hello', 'hi', 'hey', 'thanks', 'thank you', 'bye', 'goodbye']
+            if any(phrase in question_lower for phrase in casual_phrases):
+                return QueryParameters()
+        
+        # Extract variables with more keywords
+        variables = []
+        if any(word in question_lower for word in ['temperature', 'temp', 'warm', 'cold', 'heat']):
+            variables.append('temperature')
+        if any(word in question_lower for word in ['salinity', 'salt', 'saline']):
+            variables.append('salinity')
+        if any(word in question_lower for word in ['pressure', 'depth', 'deep']):
+            variables.append('pressure')
+        if any(word in question_lower for word in ['oxygen', 'o2', 'dissolved oxygen', 'do']):
+            variables.append('dissolved_oxygen')
+        if 'ph' in question_lower or 'acidity' in question_lower:
+            variables.append('ph')
+        if 'nitrate' in question_lower or 'nitrogen' in question_lower:
+            variables.append('nitrate')
+        if 'chlorophyll' in question_lower or 'chl' in question_lower:
+            variables.append('chlorophyll')
+        
+        # Detect comparison queries (between two oceans)
+        comparison_match = None
+        if 'compare' in question_lower or 'between' in question_lower or 'versus' in question_lower or 'vs' in question_lower:
+            # Extract all ocean names for comparison
+            oceans = []
+            if 'pacific' in question_lower:
+                oceans.append('Pacific Ocean')
+            if 'atlantic' in question_lower:
+                oceans.append('Atlantic Ocean')
+            if 'indian' in question_lower:
+                oceans.append('Indian Ocean')
+            if 'arctic' in question_lower:
+                oceans.append('Arctic Ocean')
+            if 'southern' in question_lower or 'south' in question_lower:
+                oceans.append('Southern Ocean')
+            
+            if len(oceans) >= 2:
+                comparison_match = oceans
+        
+        # Extract location keywords (single location)
         location = None
-        if 'pacific' in question_lower:
-            location = 'Pacific Ocean'
-        elif 'atlantic' in question_lower:
-            location = 'Atlantic Ocean'
-        elif 'indian' in question_lower:
-            location = 'Indian Ocean'
+        if not comparison_match:
+            if 'pacific' in question_lower:
+                location = 'Pacific Ocean'
+            elif 'atlantic' in question_lower:
+                location = 'Atlantic Ocean'
+            elif 'indian' in question_lower:
+                location = 'Indian Ocean'
+            elif 'arctic' in question_lower:
+                location = 'Arctic Ocean'
+            elif 'southern' in question_lower:
+                location = 'Southern Ocean'
+        
+        # Extract status
+        status = None
+        if 'active' in question_lower:
+            status = 'active'
+        elif 'inactive' in question_lower:
+            status = 'inactive'
+        elif 'maintenance' in question_lower:
+            status = 'maintenance'
+        
+        # Store comparison info in general_search_term temporarily
+        if comparison_match:
+            general_search_term = f"COMPARISON:{','.join(comparison_match)}"
+        elif not (status or location or variables):
+            # Only use text search if no specific filters found
+            general_search_term = question
+        else:
+            general_search_term = None
         
         return QueryParameters(
             location=location,
             variables=variables,
-            general_search_term=question
+            status=status,
+            general_search_term=general_search_term
         )
     
     def _generate_basic_insights(self, data_summary: Dict[str, Any]) -> str:
         """Generate basic insights without AI."""
         float_count = data_summary.get('float_count', 0)
         profile_count = data_summary.get('profile_count', 0)
+        measurement_count = data_summary.get('measurement_count', 0)
         
-        insights = f"Found {float_count} floats with {profile_count} profiles. "
+        insights = f"Found {float_count} floats with {profile_count} profiles and {measurement_count:,} measurements. "
         
-        if 'temperature_range' in data_summary:
-            temp_range = data_summary['temperature_range']
-            insights += f"Temperature ranges from {temp_range[0]:.1f}°C to {temp_range[1]:.1f}°C. "
+        # Add spatial extent info
+        if data_summary.get('spatial_extent'):
+            extent = data_summary['spatial_extent']
+            lat_range = extent['max_latitude'] - extent['min_latitude']
+            lon_range = extent['max_longitude'] - extent['min_longitude']
+            insights += f"\n\n📍 Geographic Coverage: {lat_range:.1f}° latitude × {lon_range:.1f}° longitude"
         
-        if 'salinity_range' in data_summary:
-            sal_range = data_summary['salinity_range']
-            insights += f"Salinity ranges from {sal_range[0]:.1f} to {sal_range[1]:.1f} PSU. "
+        # Add temporal info
+        if data_summary.get('date_range'):
+            date_range = data_summary['date_range']
+            insights += f"\n📅 Data Period: {date_range['start'][:10]} to {date_range['end'][:10]}"
+        
+        # Add variable statistics if available
+        if data_summary.get('variable_statistics'):
+            stats = data_summary['variable_statistics']
+            insights += "\n\n🌊 Oceanographic Data:"
+            
+            if 'temperature' in stats:
+                temp = stats['temperature']
+                insights += f"\n  • Temperature: {temp['mean']:.2f}°C (range: {temp['min']:.2f}°C to {temp['max']:.2f}°C)"
+            
+            if 'salinity' in stats:
+                sal = stats['salinity']
+                insights += f"\n  • Salinity: {sal['mean']:.2f} PSU (range: {sal['min']:.2f} to {sal['max']:.2f} PSU)"
+            
+            if 'pressure' in stats:
+                pres = stats['pressure']
+                insights += f"\n  • Pressure: {pres['mean']:.1f} dbar (max depth: {pres['max']:.1f} dbar)"
+            
+            if 'dissolved_oxygen' in stats:
+                oxy = stats['dissolved_oxygen']
+                insights += f"\n  • Dissolved Oxygen: {oxy['mean']:.2f} µmol/kg"
         
         return insights
     
     def _generate_basic_recommendations(self, parameters: QueryParameters) -> List[str]:
-        """Generate basic recommendations without AI."""
+        """Generate actionable recommendations that can be queried."""
         recommendations = []
         
-        if not parameters.variables:
-            recommendations.append("Consider examining temperature and salinity profiles")
+        # Make recommendations specific and queryable
+        if parameters.location:
+            # Suggest other regions for comparison
+            other_oceans = ['Pacific Ocean', 'Atlantic Ocean', 'Indian Ocean']
+            if parameters.location in other_oceans:
+                other_oceans.remove(parameters.location)
+                if len(other_oceans) >= 1:
+                    recommendations.append(f"Compare {parameters.location} with {other_oceans[0]}")
         
-        if not parameters.bbox and not parameters.location:
-            recommendations.append("Specify a geographic region for more focused analysis")
+        if parameters.variables:
+            # Suggest additional variables (only those with data available)
+            all_vars = ['temperature', 'salinity', 'pressure']  # Removed dissolved_oxygen
+            missing_vars = [v for v in all_vars if v not in parameters.variables]
+            if missing_vars and len(missing_vars) > 0:
+                recommendations.append(f"Also examine {missing_vars[0]} in this region")
+        else:
+            # No variables specified, suggest some
+            recommendations.append("Show me temperature data for these floats")
+            recommendations.append("What is the salinity in this region")
         
-        if not parameters.start_date:
-            recommendations.append("Add temporal constraints to examine seasonal patterns")
+        if not parameters.location:
+            recommendations.append("Find floats in Pacific Ocean")
+            recommendations.append("Show me data for Indian Ocean")
         
-        recommendations.append("Visualize data on a map to identify spatial patterns")
-        recommendations.append("Compare with historical data for trend analysis")
+        if not parameters.status:
+            recommendations.append("Filter by active floats only")
         
-        return recommendations
+        # Always add a comparison suggestion if not already comparing
+        if parameters.location and not (parameters.general_search_term and 'COMPARISON' in parameters.general_search_term):
+            recommendations.append(f"Compare temperature between {parameters.location} and Atlantic Ocean")
+        
+        return recommendations[:5]  # Limit to 5
 
 
 # Global AI service instance

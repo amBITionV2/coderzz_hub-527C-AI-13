@@ -3,6 +3,7 @@ FastAPI main application entry point for FloatChat backend.
 """
 
 from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,7 +79,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     
     return JSONResponse(
         status_code=500,
-        content=error_response.dict()
+        content=jsonable_encoder(error_response)
     )
 
 

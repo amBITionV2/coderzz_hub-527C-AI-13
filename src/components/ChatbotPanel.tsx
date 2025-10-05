@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { MessageCircle, Send, Sparkles, Loader2, AlertCircle } from "lucide-react";
+import { MessageCircle, Send, Sparkles, Loader2, AlertCircle, X, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { postQuery, AIQueryResponse, APIError } from "@/lib/api";
+import { useHighlight } from "@/contexts/HighlightContext";
 
 interface Message {
   id: number;
@@ -13,6 +15,7 @@ interface Message {
   timestamp: Date;
   data?: AIQueryResponse;
   error?: boolean;
+  highlightedFloats?: number[];
 }
 
 interface ChatbotPanelProps {
@@ -31,6 +34,8 @@ export const ChatbotPanel = ({ isOpen, onClose }: ChatbotPanelProps) => {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [lastContext, setLastContext] = useState<{location?: string, variables?: string[]}>({});
+  const { highlightedFloats, setHighlightedFloats, clearHighlights } = useHighlight();
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -48,8 +53,41 @@ export const ChatbotPanel = ({ isOpen, onClose }: ChatbotPanelProps) => {
     setIsLoading(true);
 
     try {
+      // Add context to follow-up queries
+      let enhancedQuery = currentInput;
+      
+      // Check if this is a follow-up query (contains "too", "also", "as well", or starts with "show me", "what is")
+      const isFollowUp = /\b(too|also|as well|there)\b/i.test(currentInput) || 
+                         /^(show me|what is|what are|give me|find)/i.test(currentInput);
+      
+      // If it's a follow-up and we have context, enhance the query
+      if (isFollowUp && lastContext.location && !/(pacific|atlantic|indian|arctic|southern)/i.test(currentInput)) {
+        enhancedQuery = `${currentInput} in ${lastContext.location}`;
+        
+        // Add context indicator message
+        const contextMessage: Message = {
+          id: Date.now() + 0.5,
+          text: `💡 Using context from previous query: ${lastContext.location}`,
+          sender: "bot",
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, contextMessage]);
+      }
+      
       // Call the real API
-      const response = await postQuery(currentInput);
+      const response = await postQuery(enhancedQuery);
+      
+      // Save context for next query
+      if (response.parameters.location) {
+        setLastContext({
+          location: response.parameters.location,
+          variables: response.parameters.variables || []
+        });
+      }
+      
+      // Extract float IDs for highlighting
+      const floatIds = response.floats.map(f => f.id);
+      setHighlightedFloats(floatIds);
       
       // Create formatted bot response
       const botResponse: Message = {
@@ -58,6 +96,7 @@ export const ChatbotPanel = ({ isOpen, onClose }: ChatbotPanelProps) => {
         sender: "bot",
         timestamp: new Date(),
         data: response,
+        highlightedFloats: floatIds,
       };
 
       setMessages(prev => [...prev, botResponse]);
@@ -83,23 +122,98 @@ export const ChatbotPanel = ({ isOpen, onClose }: ChatbotPanelProps) => {
   const formatAIResponse = (response: AIQueryResponse): string => {
     let formattedText = `🌊 **Query Results**\n\n`;
     
-    formattedText += `**Found ${response.floats.length} floats** matching your criteria.\n\n`;
+    // If it's a single float query (ID/WMO search), show detailed info
+    if (response.floats.length === 1 && response.query.includes('ID')) {
+      const float = response.floats[0];
+      formattedText = `📍 **Float Details**\n\n`;
+      formattedText += `**WMO ID:** ${float.wmo_id}\n`;
+      formattedText += `**Float ID:** ${float.id}\n`;
+      formattedText += `**Status:** ${float.status.charAt(0).toUpperCase() + float.status.slice(1)}\n`;
+      if (float.latitude && float.longitude) {
+        formattedText += `**Location:** ${float.latitude.toFixed(4)}°, ${float.longitude.toFixed(4)}°\n`;
+      }
+      if (float.profile_count) {
+        formattedText += `**Profiles:** ${float.profile_count}\n`;
+      }
+      if (float.latest_profile_date) {
+        formattedText += `**Last Update:** ${new Date(float.latest_profile_date).toLocaleString()}\n`;
+      }
+      formattedText += `\n`;
+    } else {
+      formattedText += `**Found ${response.floats.length} floats** matching your criteria.\n\n`;
+    }
     
     if (response.insights) {
       formattedText += `**AI Insights:**\n${response.insights}\n\n`;
     }
     
-    if (response.recommendations.length > 0) {
-      formattedText += `**Recommendations:**\n`;
-      response.recommendations.forEach((rec, index) => {
-        formattedText += `${index + 1}. ${rec}\n`;
-      });
-      formattedText += `\n`;
-    }
-    
     formattedText += `*Processing time: ${response.processing_time.toFixed(2)}s*`;
     
     return formattedText;
+  };
+
+  const handleRecommendationClick = async (recommendation: string) => {
+    if (isLoading) return;
+    
+    // Add user message
+    const userMessage: Message = {
+      id: Date.now(),
+      text: recommendation,
+      sender: "user",
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      // Call the real API
+      const response = await postQuery(recommendation);
+      
+      // Save context for next query
+      if (response.parameters.location) {
+        setLastContext({
+          location: response.parameters.location,
+          variables: response.parameters.variables || []
+        });
+      }
+      
+      // Extract float IDs for highlighting
+      const floatIds = response.floats.map(f => f.id);
+      setHighlightedFloats(floatIds);
+      
+      // Create formatted bot response
+      const botResponse: Message = {
+        id: Date.now() + 1,
+        text: formatAIResponse(response),
+        sender: "bot",
+        timestamp: new Date(),
+        data: response,
+        highlightedFloats: floatIds,
+      };
+
+      setMessages(prev => [...prev, botResponse]);
+    } catch (error) {
+      console.error('API Error:', error);
+      
+      const errorMessage: Message = {
+        id: Date.now() + 1,
+        text: error instanceof APIError 
+          ? `Sorry, I encountered an error: ${error.message}`
+          : "I'm having trouble connecting to the ocean data service. Please try again later.",
+        sender: "bot",
+        timestamp: new Date(),
+        error: true,
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRemoveHighlight = () => {
+    clearHighlights();
   };
 
   return (
@@ -162,6 +276,41 @@ export const ChatbotPanel = ({ isOpen, onClose }: ChatbotPanelProps) => {
                   </div>
                 )}
                 <div className="text-sm whitespace-pre-wrap">{message.text}</div>
+                
+                {/* Recommendations as clickable buttons */}
+                {message.data && message.data.recommendations && message.data.recommendations.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border/50">
+                    <div className="text-xs font-semibold text-muted-foreground mb-2">💡 Try these:</div>
+                    <div className="flex flex-col gap-1">
+                      {message.data.recommendations.slice(0, 3).map((rec, index) => (
+                        <Button
+                          key={index}
+                          variant="outline"
+                          size="sm"
+                          className="justify-start text-left h-auto py-2 px-3 text-xs hover:bg-primary/10 hover:border-primary/50 transition-colors"
+                          onClick={() => handleRecommendationClick(rec)}
+                        >
+                          <span className="truncate">{rec}</span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Float highlighting indicator */}
+                {message.highlightedFloats && message.highlightedFloats.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-border/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs">
+                        <MapPin className="w-3 h-3 text-primary" />
+                        <span className="text-muted-foreground">
+                          {message.highlightedFloats.length} floats highlighted on map
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 {message.data && (
                   <div className="mt-2 pt-2 border-t border-border/50">
                     <div className="text-xs text-muted-foreground">
@@ -177,6 +326,29 @@ export const ChatbotPanel = ({ isOpen, onClose }: ChatbotPanelProps) => {
           ))}
         </div>
       </ScrollArea>
+      
+      {/* Highlight Control Bar */}
+      {highlightedFloats.length > 0 && (
+        <div className="px-4 py-2 bg-primary/10 border-t border-primary/20">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-primary">
+                {highlightedFloats.length} floats highlighted
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRemoveHighlight}
+              className="h-7 text-xs hover:bg-primary/20"
+            >
+              <X className="w-3 h-3 mr-1" />
+              Remove
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <div className="p-4 border-t border-border">
